@@ -88,6 +88,13 @@ nav button.on{color:var(--accent);background:#1a2129}
 .toast.show{opacity:1}
 .editing-bar{display:none;background:#3a2f0a;color:var(--accent);border-radius:12px;padding:12px 16px;margin-bottom:14px;font-weight:700}
 .editing .editing-bar{display:block}
+.install{background:#14202b;border:2px solid var(--g1);border-radius:14px;padding:14px 16px;margin-bottom:16px;display:none}
+.install .t{font-weight:800;font-size:21px;color:var(--g1);margin-bottom:6px}
+.install .d{font-size:19px;line-height:1.6}
+.install .row{margin-top:12px}
+.install button{font:inherit;font-size:20px;font-weight:800;min-height:56px;border-radius:12px;border:none;cursor:pointer}
+.install .go{background:var(--g1);color:#0b0f13}
+.install .no{background:var(--card2);color:var(--muted);border:1px solid var(--line)}
 .remind{background:#3a2f0a;color:var(--accent);border-radius:12px;padding:12px 16px;margin-bottom:16px;font-weight:700;display:none}
 @media (min-width:700px){ html,body{font-size:21px} .wrap{padding:24px} }
 </style>
@@ -101,6 +108,11 @@ nav button.on{color:var(--accent);background:#1a2129}
 
   <!-- 記錄頁 -->
   <section class="page on" id="pg-add">
+    <div class="install" id="installBox">
+      <div class="t" id="instT"></div>
+      <div class="d" id="instD"></div>
+      <div class="row"><button class="go" id="instGo" style="display:none">📲 安裝到主畫面</button><button class="no" id="instNo">不再顯示</button></div>
+    </div>
     <div class="editing-bar">✏️ 正在修改一筆舊記錄</div>
     <div class="card">
       <div class="field">
@@ -160,7 +172,7 @@ nav button.on{color:var(--accent);background:#1a2129}
       <div id="stats" class="v" style="font-size:20px"></div>
     </div>
     <button class="btn danger" id="wipeBtn">🗑 清除全部資料</button>
-    <div class="hint" style="text-align:center;margin-top:18px">教學進度記錄表 v1.2</div>
+    <div class="hint" style="text-align:center;margin-top:18px">教學進度記錄表 v1.3</div>
   </section>
 </div>
 
@@ -368,6 +380,35 @@ document.addEventListener("visibilitychange",()=>{ if(!document.hidden) checkDay
 window.addEventListener("focus",checkDay);
 $("#todayLbl").textContent=fmtDate(shownToday);
 resetForm();
+/* ---- 安裝引導 ---- */
+(function(){
+  const ua=navigator.userAgent, HIDE=KEY+".installHide";
+  const standalone=matchMedia("(display-mode: standalone)").matches||navigator.standalone===true;
+  if(standalone||localStorage.getItem(HIDE)) return;
+  const box=$("#installBox"), T=$("#instT"), D=$("#instD"), go=$("#instGo");
+  const isIOS=/iPad|iPhone|iPod/.test(ua)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+  const isAndroid=/Android/.test(ua);
+  const inApp=/Line\/|FBAN|FBAV|Instagram|GSA\/|; wv\)|MicroMessenger/.test(ua);
+  const show=(t,d)=>{T.textContent=t;D.innerHTML=d;box.style.display="block";};
+  if(inApp){
+    show("⚠️ 目前不是在瀏覽器中開啟", isIOS
+      ? "這個視窗無法安裝。請點右上角「⋯」或分享鍵，選<b>「用 Safari 開啟」</b>，再依提示加入主畫面。"
+      : "這個視窗無法安裝。請點右上角「⋮」，選<b>「在 Chrome 中開啟」</b>，再依提示安裝。");
+  } else if(isIOS){
+    if(/CriOS|FxiOS|EdgiOS/.test(ua)) show("請改用 Safari 開啟","iPad／iPhone 只有 <b>Safari</b> 能把 App 加到主畫面。請複製網址到 Safari 開啟。");
+    else show("📲 加到主畫面","點網址列旁的<b>分享鍵 ⬆️</b>，往下找<b>「加入主畫面」</b>，再按「新增」。");
+  } else if(isAndroid){
+    show("📲 安裝到主畫面","點右上角 <b>⋮</b> 選單，選<b>「加到主畫面」</b>→<b>「安裝」</b>。");
+  }
+  window.addEventListener("beforeinstallprompt",e=>{
+    e.preventDefault(); window._bip=e;
+    show("📲 安裝到主畫面","按下方按鈕，即可把 App 安裝到主畫面，之後不用網路也能開。");
+    go.style.display="block";
+  });
+  go.addEventListener("click",async()=>{ const e=window._bip; if(!e) return; e.prompt(); const r=await e.userChoice; if(r.outcome==="accepted") box.style.display="none"; window._bip=null; });
+  window.addEventListener("appinstalled",()=>{ box.style.display="none"; toast("✅ 已安裝到主畫面"); });
+  $("#instNo").addEventListener("click",()=>{ localStorage.setItem(HIDE,"1"); box.style.display="none"; });
+})();
 if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
 if(navigator.storage&&navigator.storage.persist) navigator.storage.persist();
 </script>
