@@ -95,6 +95,24 @@ nav button.on{color:var(--accent);background:#1a2129}
 .install button{font:inherit;font-size:20px;font-weight:800;min-height:56px;border-radius:12px;border:none;cursor:pointer}
 .install .go{background:var(--g1);color:#0b0f13}
 .install .no{background:var(--card2);color:var(--muted);border:1px solid var(--line)}
+.stuwrap{margin-top:14px;display:none}
+.stuwrap .sub{font-size:19px;font-weight:800;color:var(--text);margin:4px 0 8px}
+.grp{background:var(--card2);border:1px solid var(--line);border-radius:12px;margin-bottom:10px;overflow:hidden}
+.grp summary{list-style:none;cursor:pointer;padding:14px 16px;font-size:20px;font-weight:800;display:flex;justify-content:space-between;align-items:center}
+.grp summary::-webkit-details-marker{display:none}
+.grp summary .cnt{font-size:17px;font-weight:700;color:var(--muted)}
+.grp summary .cnt.has{color:var(--accent)}
+.stu{padding:10px 14px;border-top:1px solid var(--line)}
+.stu .line{display:flex;align-items:center;gap:10px}
+.stu .nm{flex:1;font-size:21px;font-weight:700;min-width:0}
+.stu .nm small{display:block;font-size:15px;color:var(--muted);font-weight:400}
+.stu select{flex:0 0 52%;font:inherit;font-size:19px;min-height:52px;color:var(--text);background:#141a21;border:2px solid var(--line);border-radius:10px;padding:6px 10px;color-scheme:dark}
+.stu.mark{background:#2a2410}
+.stu.mark select{border-color:var(--accent);color:var(--accent);font-weight:700}
+.stu input.other{display:none;width:100%;margin-top:8px;font:inherit;font-size:20px;color:var(--text);background:#141a21;border:2px solid var(--accent);border-radius:10px;padding:10px 12px;outline:none}
+.stu.isother input.other{display:block}
+.nostu{font-size:18px;color:var(--muted);background:var(--card2);border-radius:10px;padding:12px 14px}
+textarea.roster{min-height:160px;font-size:18px;margin-top:12px;display:none}
 .remind{background:#3a2f0a;color:var(--accent);border-radius:12px;padding:12px 16px;margin-bottom:16px;font-weight:700;display:none}
 @media (min-width:700px){ html,body{font-size:21px} .wrap{padding:24px} }
 </style>
@@ -136,6 +154,10 @@ nav button.on{color:var(--accent);background:#1a2129}
       <div class="field">
         <label class="lbl" for="fPerf">課堂表現</label>
         <textarea id="fPerf" placeholder="例：專注度佳；滴定實驗操作需再練習"></textarea>
+        <div class="stuwrap" id="stuWrap">
+          <div class="sub">👥 學生狀況（未選＝正常）</div>
+          <div id="stuBox"></div>
+        </div>
       </div>
     </div>
     <button class="btn primary" id="saveBtn">💾 儲存記錄</button>
@@ -159,6 +181,21 @@ nav button.on{color:var(--accent);background:#1a2129}
       <button class="btn primary" id="exportXlsx">📊 匯出 Excel 檔</button>
     </div>
     <div class="card">
+      <label class="lbl">三年級分組名單</label>
+      <div class="hint" style="margin:0 0 14px" id="rosterInfo"></div>
+      <div class="row">
+        <button class="btn ghost" id="rosterFileBtn">📄 匯入名單檔</button>
+        <button class="btn ghost" id="rosterPasteBtn">📋 貼上名單</button>
+      </div>
+      <input type="file" id="rosterFile" accept=".csv,.txt,text/csv,text/plain" hidden>
+      <textarea class="roster" id="rosterText" placeholder="每行一位：組別,班級座號,姓名&#10;例：A,30101,王小明"></textarea>
+      <div class="row" id="rosterPasteRow" style="display:none;margin-top:10px">
+        <button class="btn primary" id="rosterPasteOk" style="font-size:20px;min-height:58px">✅ 套用名單</button>
+      </div>
+      <div style="height:10px"></div>
+      <button class="btn danger" id="rosterClear" style="display:none">清除名單</button>
+    </div>
+    <div class="card">
       <label class="lbl">備份與還原</label>
       <div class="hint" style="margin:0 0 14px">資料只存在這台裝置的瀏覽器裡。建議每月備份一次，換手機或清除瀏覽器資料前務必備份。</div>
       <div class="row">
@@ -172,14 +209,14 @@ nav button.on{color:var(--accent);background:#1a2129}
       <div id="stats" class="v" style="font-size:20px"></div>
     </div>
     <button class="btn danger" id="wipeBtn">🗑 清除全部資料</button>
-    <div class="hint" style="text-align:center;margin-top:18px">教學進度記錄表 v1.3</div>
+    <div class="hint" style="text-align:center;margin-top:18px">教學進度記錄表 v1.4</div>
   </section>
 </div>
 
 <nav>
   <button data-pg="pg-add" class="on"><span class="ic">✍️</span>記錄</button>
   <button data-pg="pg-list"><span class="ic">📋</span>歷史</button>
-  <button data-pg="pg-data"><span class="ic">📊</span>匯出</button>
+  <button data-pg="pg-data"><span class="ic">📊</span>匯出／名單</button>
 </nav>
 <div class="toast" id="toast"></div>
 
@@ -192,6 +229,23 @@ const SUBJECTS = {
 };
 const GNUM = {"一年級":1,"二年級":2,"三年級":3};
 const KEY = "teachingLog.v1";
+const ROSTER_GRADE = "三年級";
+const STATUSES = ["精神不佳","教材未帶","上課分心","身體不適","作業未完成","其他"];
+const RKEY = KEY+".roster";
+let roster = (()=>{ try{ return JSON.parse(localStorage.getItem(RKEY))||[]; }catch(e){ return []; } })();
+function saveRoster(){ localStorage.setItem(RKEY, JSON.stringify(roster)); }
+function parseRoster(text){
+  const out=[];
+  for(let line of text.replace(/^\uFEFF/,"").split(/\r?\n/)){
+    line=line.trim(); if(!line) continue;
+    const c=line.split(/[,\t，]/).map(x=>x.trim().replace(/^"|"$/g,""));
+    if(c.length<3) continue;
+    if(/組別|座號|姓名/.test(c[0]+c[1]+c[2])) continue;
+    out.push({g:c[0].toUpperCase(), id:c[1], name:c[2]});
+  }
+  return out;
+}
+function groupsOf(list){ const m={}; for(const s of list){ (m[s.g]=m[s.g]||[]).push(s); } return Object.keys(m).sort().map(g=>({g,list:m[g]})); }
 const $ = s => document.querySelector(s);
 
 let records = load();
@@ -233,18 +287,62 @@ function renderLast(){
 $("#gradeChips").addEventListener("click",e=>{
   const b=e.target.closest(".chip"); if(!b) return;
   if(sel.grade!==b.dataset.v){ sel.grade=b.dataset.v; sel.subject=null;
-    if(SUBJECTS[sel.grade].length===1) sel.subject=SUBJECTS[sel.grade][0]; }
+    if(SUBJECTS[sel.grade].length===1) sel.subject=SUBJECTS[sel.grade][0];
+    renderStudents(); }
   renderGrades(); renderSubjects();
 });
 $("#subjChips").addEventListener("click",e=>{
   const b=e.target.closest(".chip"); if(!b) return;
   sel.subject=b.dataset.v; renderSubjects();
 });
+function renderStudents(prev){
+  const wrap=$("#stuWrap"), box=$("#stuBox");
+  if(sel.grade!==ROSTER_GRADE){ wrap.style.display="none"; box.innerHTML=""; return; }
+  wrap.style.display="block";
+  const marks={}; for(const x of (prev||[])) marks[x.id]=x;
+  // 修改舊記錄時，若名單已變更，仍保留舊記錄中的學生
+  const list=[...roster]; for(const x of (prev||[])) if(!list.some(s=>s.id===x.id)) list.push({g:x.g,id:x.id,name:x.name});
+  if(!list.length){ box.innerHTML='<div class="nostu">尚未匯入分組名單。請到下方「匯出／名單」頁匯入。</div>'; return; }
+  box.innerHTML=groupsOf(list).map(({g,list})=>`<details class="grp" open data-g="${esc(g)}">
+    <summary><span>${esc(g)} 組（${list.length} 人）</span><span class="cnt"></span></summary>
+    ${list.map(s=>{ const m=marks[s.id]; return `<div class="stu${m?' mark':''}${m&&m.s==='其他'?' isother':''}" data-id="${esc(s.id)}" data-g="${esc(s.g)}" data-name="${esc(s.name)}">
+      <div class="line"><div class="nm">${esc(s.name)}<small>${esc(s.id)}</small></div>
+      <select aria-label="${esc(s.name)} 狀況"><option value="">✓ 正常</option>${STATUSES.map(t=>`<option${m&&m.s===t?' selected':''}>${t}</option>`).join("")}</select></div>
+      <input class="other" type="text" placeholder="請輸入「其他」狀況" value="${m&&m.s==='其他'?esc(m.note||''):''}">
+    </div>`; }).join("")}
+  </details>`).join("");
+  updateCounts();
+}
+function updateCounts(){
+  document.querySelectorAll("#stuBox .grp").forEach(d=>{
+    const n=d.querySelectorAll(".stu.mark").length, c=d.querySelector(".cnt");
+    c.textContent = n ? `${n} 人有狀況` : "全員正常"; c.classList.toggle("has",n>0);
+  });
+}
+$("#stuBox").addEventListener("change",e=>{
+  if(e.target.tagName!=="SELECT") return;
+  const row=e.target.closest(".stu"), v=e.target.value;
+  row.classList.toggle("mark",!!v); row.classList.toggle("isother",v==="其他");
+  if(v==="其他") row.querySelector("input.other").focus();
+  updateCounts();
+});
+function collectStudents(){
+  if(sel.grade!==ROSTER_GRADE) return {list:[]};
+  const list=[];
+  for(const row of document.querySelectorAll("#stuBox .stu")){
+    const v=row.querySelector("select").value; if(!v) continue;
+    const it={g:row.dataset.g,id:row.dataset.id,name:row.dataset.name,s:v};
+    if(v==="其他"){ it.note=row.querySelector("input.other").value.trim(); if(!it.note) return {err:`請填寫 ${it.name} 的「其他」狀況`,row}; }
+    list.push(it);
+  }
+  return {list};
+}
+function stuText(arr,sep){ return (arr||[]).map(x=>`${x.g}組 ${x.name}：${x.s==="其他"?(x.note||"其他"):x.s}`).join(sep); }
 function resetForm(){
   editingId=null; document.body.classList.remove("editing");
   $("#fDate").value=todayStr(); $("#fProg").value=""; $("#fPerf").value="";
   $("#saveBtn").textContent="💾 儲存記錄"; $("#cancelEdit").style.display="none";
-  renderGrades(); renderSubjects();
+  renderGrades(); renderSubjects(); renderStudents();
 }
 $("#saveBtn").addEventListener("click",()=>{
   const date=$("#fDate").value, progress=$("#fProg").value.trim(), perf=$("#fPerf").value.trim();
@@ -252,15 +350,18 @@ $("#saveBtn").addEventListener("click",()=>{
   if(!sel.grade) return toast("請選擇年級");
   if(!sel.subject) return toast("請選擇科目");
   if(!progress) { $("#fProg").focus(); return toast("請填寫進度"); }
+  const st=collectStudents();
+  if(st.err){ st.row.querySelector("input.other").focus(); return toast(st.err); }
+  const students=st.list;
   if(editingId){
     const r=records.find(x=>x.id===editingId);
-    Object.assign(r,{date,grade:sel.grade,subject:sel.subject,progress,performance:perf,updated:Date.now()});
+    Object.assign(r,{date,grade:sel.grade,subject:sel.subject,progress,performance:perf,students,updated:Date.now()});
     save(); toast("✅ 已更新"); resetForm(); go("pg-list"); return;
   }
   records.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),
-    date,grade:sel.grade,subject:sel.subject,progress,performance:perf,created:Date.now()});
+    date,grade:sel.grade,subject:sel.subject,progress,performance:perf,students,created:Date.now()});
   save(); toast("✅ 已儲存");
-  $("#fProg").value=""; $("#fPerf").value=""; renderLast();
+  $("#fProg").value=""; $("#fPerf").value=""; renderLast(); renderStudents(); window.scrollTo({top:0,behavior:"smooth"});
 });
 $("#cancelEdit").addEventListener("click",()=>{ resetForm(); go("pg-list"); });
 
@@ -278,6 +379,7 @@ function renderList(){
       <div class="top"><span class="date">${fmtDate(r.date)}</span><span class="tag">${esc(r.grade)}・${esc(r.subject)}</span></div>
       <div class="k">進度</div><div class="v">${esc(r.progress)}</div>
       ${r.performance?`<div class="k">課堂表現</div><div class="v">${esc(r.performance)}</div>`:""}
+      ${r.students&&r.students.length?`<div class="k">學生狀況（${r.students.length} 人）</div><div class="v">${esc(stuText(r.students,"\n"))}</div>`:""}
       <div class="acts"><button data-act="edit" data-id="${r.id}">✏️ 修改</button><button class="del" data-act="del" data-id="${r.id}">🗑 刪除</button></div>
     </div>`).join("") : `<div class="empty">還沒有記錄<br>到「記錄」頁新增第一筆吧</div>`;
 }
@@ -292,7 +394,7 @@ $("#list").addEventListener("click",e=>{
     editingId=r.id; sel={grade:r.grade,subject:r.subject};
     $("#fDate").value=r.date; $("#fProg").value=r.progress; $("#fPerf").value=r.performance||"";
     document.body.classList.add("editing"); $("#saveBtn").textContent="💾 更新這筆記錄";
-    $("#cancelEdit").style.display="block"; renderGrades(); renderSubjects(); go("pg-add");
+    $("#cancelEdit").style.display="block"; renderGrades(); renderSubjects(); renderStudents(r.students); go("pg-add");
   }
 });
 
@@ -303,12 +405,27 @@ $("#exportXlsx").addEventListener("click",()=>{
   if(typeof XLSX==="undefined") return toast("Excel 模組載入中，請稍候再試");
   const wb=XLSX.utils.book_new();
   const all=[...records].sort((a,b)=>a.date.localeCompare(b.date)||a.created-b.created);
-  const toRows = arr => arr.map(r=>({"日期":r.date,"年級":r.grade,"科目":r.subject,"進度":r.progress,"課堂表現":r.performance||""}));
-  const addSheet=(name,arr)=>{ const ws=XLSX.utils.json_to_sheet(toRows(arr),{header:["日期","年級","科目","進度","課堂表現"]});
-    ws["!cols"]=[{wch:12},{wch:8},{wch:12},{wch:45},{wch:45}]; XLSX.utils.book_append_sheet(wb,ws,name); };
+  const H=["日期","年級","科目","進度","課堂表現","學生狀況"];
+  const toRows = arr => arr.map(r=>({"日期":r.date,"年級":r.grade,"科目":r.subject,"進度":r.progress,"課堂表現":r.performance||"","學生狀況":stuText(r.students,"；")}));
+  const addSheet=(name,arr)=>{ const ws=XLSX.utils.json_to_sheet(toRows(arr),{header:H});
+    ws["!cols"]=[{wch:12},{wch:8},{wch:12},{wch:40},{wch:40},{wch:50}]; XLSX.utils.book_append_sheet(wb,ws,name); };
   addSheet("全部",all);
   for(const g in SUBJECTS) for(const s of SUBJECTS[g]){
     const arr=all.filter(r=>r.grade===g&&r.subject===s); if(arr.length) addSheet((g.replace("年級","年")+s).slice(0,31),arr);
+  }
+  // 學生狀況明細與統計
+  const det=[]; const cnt={};
+  for(const r of all) for(const x of (r.students||[])){
+    det.push({"日期":r.date,"科目":r.subject,"組別":x.g,"班級座號":x.id,"姓名":x.name,"狀況":x.s,"說明":x.note||""});
+    const c=cnt[x.id]||(cnt[x.id]={"組別":x.g,"班級座號":x.id,"姓名":x.name}); c[x.s]=(c[x.s]||0)+1; c["合計"]=(c["合計"]||0)+1;
+  }
+  if(det.length){
+    const ws=XLSX.utils.json_to_sheet(det,{header:["日期","科目","組別","班級座號","姓名","狀況","說明"]});
+    ws["!cols"]=[{wch:12},{wch:10},{wch:6},{wch:10},{wch:10},{wch:12},{wch:30}]; XLSX.utils.book_append_sheet(wb,ws,"學生狀況明細");
+    const base=[...roster]; for(const id in cnt) if(!base.some(s=>s.id===id)) base.push({g:cnt[id]["組別"],id,name:cnt[id]["姓名"]});
+    const rows=base.sort((a,b)=>a.g.localeCompare(b.g)||a.id.localeCompare(b.id)).map(s=>{ const c=cnt[s.id]||{}; const o={"組別":s.g,"班級座號":s.id,"姓名":s.name}; for(const t of STATUSES) o[t]=c[t]||0; o["合計"]=c["合計"]||0; return o; });
+    const ws2=XLSX.utils.json_to_sheet(rows,{header:["組別","班級座號","姓名",...STATUSES,"合計"]});
+    ws2["!cols"]=[{wch:6},{wch:10},{wch:10},...STATUSES.map(()=>({wch:10})),{wch:8}]; XLSX.utils.book_append_sheet(wb,ws2,"學生狀況統計");
   }
   const name=`教學進度記錄_${todayStr()}.xlsx`;
   const blob=new Blob([XLSX.write(wb,{bookType:"xlsx",type:"array"})],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
@@ -325,7 +442,7 @@ async function shareOrDownload(blob,name,msg){
 }
 $("#backupBtn").addEventListener("click",async ()=>{
   if(!records.length) return toast("目前沒有資料");
-  const ok=await shareOrDownload(new Blob([JSON.stringify({app:"teaching-log",version:1,exported:new Date().toISOString(),records},null,2)],{type:"application/json"}),`教學進度備份_${todayStr()}.json`,"⬇️ 已備份");
+  const ok=await shareOrDownload(new Blob([JSON.stringify({app:"teaching-log",version:1,exported:new Date().toISOString(),records,roster},null,2)],{type:"application/json"}),`教學進度備份_${todayStr()}.json`,"⬇️ 已備份");
   if(ok){ localStorage.setItem(KEY+".lastBackup",Date.now()); renderStats(); }
 });
 $("#restoreBtn").addEventListener("click",()=>$("#restoreFile").click());
@@ -336,7 +453,9 @@ $("#restoreFile").addEventListener("change",async e=>{
     if(!Array.isArray(inc)) throw 0;
     const ids=new Set(records.map(r=>r.id)); let n=0;
     for(const r of inc){ if(r&&r.id&&r.date&&!ids.has(r.id)){ records.push(r); n++; } }
-    save(); renderStats(); toast(`已還原 ${n} 筆（重複的略過）`);
+    let rmsg="";
+    if(Array.isArray(data.roster)&&data.roster.length){ roster=data.roster; saveRoster(); renderRoster(); renderStudents(); rmsg=`，名單 ${roster.length} 人`; }
+    save(); renderStats(); toast(`已還原 ${n} 筆${rmsg}（重複的略過）`);
   }catch(err){ toast("檔案格式不正確"); }
   e.target.value="";
 });
@@ -380,6 +499,39 @@ document.addEventListener("visibilitychange",()=>{ if(!document.hidden) checkDay
 window.addEventListener("focus",checkDay);
 $("#todayLbl").textContent=fmtDate(shownToday);
 resetForm();
+/* ---- 分組名單管理 ---- */
+function renderRoster(){
+  const gs=groupsOf(roster);
+  $("#rosterInfo").innerHTML = roster.length
+    ? `目前名單：<b style="color:var(--text)">${roster.length} 人</b>（${gs.map(x=>`${esc(x.g)} 組 ${x.list.length} 人`).join("、")}）<br>名單只存在這台裝置，不會上傳到網路。`
+    : "尚未匯入。格式：組別,班級座號,姓名（可直接匯入 CSV 檔，或從 LINE／記事本複製貼上）。<br>名單只存在這台裝置，不會上傳到網路。";
+  $("#rosterClear").style.display = roster.length ? "block" : "none";
+}
+function applyRoster(text){
+  const list=parseRoster(text);
+  if(!list.length) return toast("讀不到名單，請確認格式");
+  const ids=new Set(); for(const s of list){ if(ids.has(s.id)) return toast(`座號 ${s.id} 重複`); ids.add(s.id); }
+  if(roster.length && !confirm(`以新名單（${list.length} 人）取代目前名單（${roster.length} 人）？\n已存的記錄不受影響。`)) return;
+  roster=list; saveRoster(); renderRoster(); renderStudents(); toast(`✅ 已匯入 ${list.length} 位學生`);
+  $("#rosterText").style.display="none"; $("#rosterPasteRow").style.display="none"; $("#rosterText").value="";
+}
+$("#rosterFileBtn").addEventListener("click",()=>$("#rosterFile").click());
+$("#rosterFile").addEventListener("change",async e=>{
+  const f=e.target.files[0]; if(!f) return;
+  let buf=await f.arrayBuffer(), text=new TextDecoder("utf-8").decode(buf);
+  if(text.includes("\uFFFD")){ try{ text=new TextDecoder("big5").decode(buf); }catch(err){} }
+  applyRoster(text); e.target.value="";
+});
+$("#rosterPasteBtn").addEventListener("click",()=>{
+  const t=$("#rosterText"), show=t.style.display!=="block";
+  t.style.display=show?"block":"none"; $("#rosterPasteRow").style.display=show?"flex":"none"; if(show) t.focus();
+});
+$("#rosterPasteOk").addEventListener("click",()=>applyRoster($("#rosterText").value));
+$("#rosterClear").addEventListener("click",()=>{
+  if(confirm("確定清除分組名單？已存的記錄不受影響。")){ roster=[]; saveRoster(); renderRoster(); renderStudents(); toast("已清除名單"); }
+});
+renderRoster();
+
 /* ---- 安裝引導 ---- */
 (function(){
   const ua=navigator.userAgent, HIDE=KEY+".installHide";
