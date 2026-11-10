@@ -1,4 +1,4 @@
-const CACHE = "teaching-log-v6";
+const CACHE = "teaching-log-v7";
 const FILES = ["./", "index.html", "manifest.json", "xlsx.full.min.js", "icon-192.png", "icon-512.png", "apple-touch-icon.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES))); self.skipWaiting(); });
 self.addEventListener("activate", e => {

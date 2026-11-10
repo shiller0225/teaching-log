@@ -114,6 +114,16 @@ nav button.on{color:var(--accent);background:#1a2129}
 .nostu{font-size:18px;color:var(--muted);background:var(--card2);border-radius:10px;padding:12px 14px}
 textarea.roster{min-height:160px;font-size:18px;margin-top:12px;display:none}
 .remind{background:#3a2f0a;color:var(--accent);border-radius:12px;padding:12px 16px;margin-bottom:16px;font-weight:700;display:none}
+.gtabs{position:sticky;top:0;z-index:5;background:var(--bg);display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:6px 0 12px;margin-bottom:4px}
+.gtab{font:inherit;font-size:22px;font-weight:800;min-height:62px;border-radius:14px;border:2px solid var(--line);background:var(--card);color:var(--muted);cursor:pointer}
+.gtab.on{color:#0b0f13;border-color:transparent}
+.gtab.on[data-g="1"]{background:var(--g1)} .gtab.on[data-g="2"]{background:var(--g2)} .gtab.on[data-g="3"]{background:var(--g3)}
+.gtabs.hide{display:none}
+.gprog{background:var(--card2);border:1px solid var(--line);border-left:6px solid var(--g3);border-radius:12px;padding:12px 14px;margin-bottom:12px}
+.gprog .gt{font-size:20px;font-weight:800;margin-bottom:8px}
+.gprog textarea{min-height:96px;background:#141a21}
+.gprog .gl{font-size:17px;color:#cfe3f2;margin-top:8px}
+.gprog .gl b{color:var(--text)}
 @media (min-width:700px){ html,body{font-size:21px} .wrap{padding:24px} }
 </style>
 </head>
@@ -123,6 +133,7 @@ textarea.roster{min-height:160px;font-size:18px;margin-top:12px;display:none}
     <h1>📘 教學進度</h1>
     <div class="today" id="todayLbl"></div>
   </header>
+  <div class="gtabs" id="gtabs"></div>
 
   <!-- 記錄頁 -->
   <section class="page on" id="pg-add">
@@ -137,23 +148,19 @@ textarea.roster{min-height:160px;font-size:18px;margin-top:12px;display:none}
         <label class="lbl" for="fDate">日期</label>
         <input type="date" id="fDate">
       </div>
-      <div class="field">
-        <label class="lbl">年級</label>
-        <div class="chips" id="gradeChips"></div>
-      </div>
       <div class="field subj">
         <label class="lbl">科目</label>
         <div class="chips two" id="subjChips"></div>
-        <div class="hint" id="subjHint">請先選擇年級</div>
         <div class="last" id="lastBox"></div>
       </div>
       <div class="field">
         <label class="lbl" for="fProg">進度</label>
         <textarea id="fProg" placeholder="例：3-2 酸鹼中和，完成課本 p.68–72"></textarea>
+        <div id="gProgBox"></div>
       </div>
       <div class="field">
         <label class="lbl" for="fPerf">課堂表現</label>
-        <textarea id="fPerf" placeholder="例：專注度佳；滴定實驗操作需再練習"></textarea>
+        <textarea id="fPerf" placeholder="例：專注度佳；實驗操作需再練習"></textarea>
         <div class="stuwrap" id="stuWrap">
           <div class="sub">👥 學生狀況（未選＝正常）</div>
           <div id="stuBox"></div>
@@ -177,7 +184,7 @@ textarea.roster{min-height:160px;font-size:18px;margin-top:12px;display:none}
     <div class="remind" id="backupRemind"></div>
     <div class="card">
       <label class="lbl">匯出 Excel</label>
-      <div class="hint" style="margin:0 0 14px">每個「年級＋科目」各一個工作表，依日期排序。</div>
+      <div class="hint" style="margin:0 0 14px">每個「年級＋科目」各一個工作表；三年級另有 B／E／F 組進度欄與學生狀況統計。</div>
       <button class="btn primary" id="exportXlsx">📊 匯出 Excel 檔</button>
     </div>
     <div class="card">
@@ -209,7 +216,7 @@ textarea.roster{min-height:160px;font-size:18px;margin-top:12px;display:none}
       <div id="stats" class="v" style="font-size:20px"></div>
     </div>
     <button class="btn danger" id="wipeBtn">🗑 清除全部資料</button>
-    <div class="hint" style="text-align:center;margin-top:18px">教學進度記錄表 v1.4</div>
+    <div class="hint" style="text-align:center;margin-top:18px">教學進度記錄表 v1.5</div>
   </section>
 </div>
 
@@ -227,13 +234,34 @@ const SUBJECTS = {
   "二年級": ["雄科特訓班"],
   "三年級": ["理化","地球科學"]
 };
+const GRADES = Object.keys(SUBJECTS);
 const GNUM = {"一年級":1,"二年級":2,"三年級":3};
 const KEY = "teachingLog.v1";
-const ROSTER_GRADE = "三年級";
+const G3 = "三年級";
+const DEFAULT_GROUPS = ["B","E","F"];
 const STATUSES = ["精神不佳","教材未帶","上課分心","身體不適","作業未完成","其他"];
-const RKEY = KEY+".roster";
+const RKEY = KEY+".roster", GKEY = KEY+".grade";
+const $ = s => document.querySelector(s);
+
+let records = load();
 let roster = (()=>{ try{ return JSON.parse(localStorage.getItem(RKEY))||[]; }catch(e){ return []; } })();
+let grade = GRADES.includes(localStorage.getItem(GKEY)) ? localStorage.getItem(GKEY) : GRADES[0];
+let curPage = "pg-add";
+let editingId = null;
+let subjFilter = {};                 // 歷史頁各年級的科目篩選
+const drafts = {};                    // 各年級分頁獨立的草稿
+for(const g of GRADES) drafts[g]=blankDraft(g);
+
+function blankDraft(g){ return {subject: SUBJECTS[g].length===1 ? SUBJECTS[g][0] : null, prog:"", perf:"", gp:{}, students:[]}; }
+function load(){ try{ return JSON.parse(localStorage.getItem(KEY)) || []; }catch(e){ return []; } }
+function save(){ localStorage.setItem(KEY, JSON.stringify(records)); }
 function saveRoster(){ localStorage.setItem(RKEY, JSON.stringify(roster)); }
+function todayStr(){ const d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,10); }
+function fmtDate(s){ const d=new Date(s+"T00:00"); const w="日一二三四五六"[d.getDay()]; return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}（${w}）`; }
+function shortDate(s){ return s.slice(5).replace("-","/"); }
+function esc(s){ return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function toast(m){ const t=$("#toast"); t.textContent=m; t.classList.add("show"); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("show"),1800); }
+function sorted(arr){ return [...arr].sort((a,b)=> b.date.localeCompare(a.date) || b.created-a.created); }
 function parseRoster(text){
   const out=[];
   for(let line of text.replace(/^\uFEFF/,"").split(/\r?\n/)){
@@ -246,61 +274,91 @@ function parseRoster(text){
   return out;
 }
 function groupsOf(list){ const m={}; for(const s of list){ (m[s.g]=m[s.g]||[]).push(s); } return Object.keys(m).sort().map(g=>({g,list:m[g]})); }
-const $ = s => document.querySelector(s);
-
-let records = load();
-let sel = {grade:null, subject:null};
-let editingId = null;
-let filter = "全部";
-
-function load(){ try{ return JSON.parse(localStorage.getItem(KEY)) || []; }catch(e){ return []; } }
-function save(){ localStorage.setItem(KEY, JSON.stringify(records)); }
-function todayStr(){ const d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,10); }
-function fmtDate(s){ const d=new Date(s+"T00:00"); const w="日一二三四五六"[d.getDay()]; return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}（${w}）`; }
-function esc(s){ return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
-function toast(m){ const t=$("#toast"); t.textContent=m; t.classList.add("show"); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("show"),1800); }
-function sorted(arr){ return [...arr].sort((a,b)=> b.date.localeCompare(a.date) || b.created-a.created); }
-
-/* ---- 表單 ---- */
-function renderGrades(){
-  $("#gradeChips").innerHTML = Object.keys(SUBJECTS).map(g =>
-    `<button class="chip ${sel.grade===g?'on':''}" data-g="${GNUM[g]}" data-v="${g}">${g}</button>`).join("");
+function g3Groups(extra){
+  const set=new Set(roster.length ? roster.map(s=>s.g) : DEFAULT_GROUPS);
+  for(const k of Object.keys(extra||{})) set.add(k);
+  return [...set].sort();
 }
-function renderSubjects(){
-  const box=$("#subjChips"), hint=$("#subjHint");
-  if(!sel.grade){ box.innerHTML=""; hint.style.display="block"; renderLast(); return; }
-  hint.style.display="none";
-  const list = SUBJECTS[sel.grade];
-  box.className = "chips " + (list.length===1 ? "" : "two");
-  if(list.length===1) box.style.gridTemplateColumns="1fr"; else box.style.gridTemplateColumns="";
-  box.innerHTML = list.map(s=>`<button class="chip ${sel.subject===s?'on':''}" data-v="${s}">${s}</button>`).join("");
+function gName(k){ return k.startsWith("（")?k.replace(/[（）]/g,""):`${k}組`; }
+function gpText(gp,sep){ return Object.keys(gp||{}).sort().filter(k=>gp[k]).map(k=>`${gName(k)}：${gp[k]}`).join(sep); }
+function stuText(arr,sep){ return (arr||[]).map(x=>`${x.g}組 ${x.name}：${x.s==="其他"?(x.note||"其他"):x.s}`).join(sep); }
+
+/* ---- 年級分頁 ---- */
+function renderTabs(){
+  $("#gtabs").innerHTML = GRADES.map(g=>`<button class="gtab ${g===grade?'on':''}" data-g="${GNUM[g]}" data-v="${g}">${g}</button>`).join("");
+  $("#gtabs").classList.toggle("hide", curPage==="pg-data");
+}
+$("#gtabs").addEventListener("click",e=>{
+  const b=e.target.closest(".gtab"); if(!b || b.dataset.v===grade) return;
+  if(curPage==="pg-add"){
+    if(editingId) cancelEdit(); else captureDraft();
+  }
+  grade=b.dataset.v; localStorage.setItem(GKEY,grade);
+  renderTabs();
+  if(curPage==="pg-add") renderForm(); else renderList();
+  window.scrollTo(0,0);
+});
+
+/* ---- 記錄表單 ---- */
+function captureDraft(){
+  const d=drafts[grade];
+  d.prog=$("#fProg").value; d.perf=$("#fPerf").value;
+  d.gp={}; document.querySelectorAll("#gProgBox textarea").forEach(t=>{ d.gp[t.dataset.g]=t.value; });
+  d.students=readStudents(true).list;
+}
+function renderForm(){
+  const d=drafts[grade], is3=grade===G3;
+  // 科目
+  const list=SUBJECTS[grade], box=$("#subjChips");
+  box.style.gridTemplateColumns = list.length===1 ? "1fr" : "";
+  box.innerHTML = list.map(s=>`<button class="chip ${d.subject===s?'on':''}" data-v="${s}">${s}</button>`).join("");
+  // 進度
+  $("#fProg").style.display = is3 ? "none" : "block";
+  if(!is3){ $("#fProg").value=d.prog; $("#gProgBox").innerHTML=""; }
+  else renderGroupProg();
+  // 課堂表現
+  $("#fPerf").style.display = is3 ? "none" : "block";
+  $("#fPerf").value = is3 ? "" : d.perf;
+  renderStudents(d.students);
   renderLast();
 }
+function renderGroupProg(){
+  const d=drafts[grade];
+  $("#gProgBox").innerHTML = g3Groups(d.gp).map(g=>`<div class="gprog">
+      <div class="gt">${esc(gName(g))}</div>
+      <textarea data-g="${esc(g)}" placeholder="${esc(gName(g))}今天的進度">${esc(d.gp[g]||"")}</textarea>
+      <div class="gl" data-gl="${esc(g)}"></div>
+    </div>`).join("");
+}
 function renderLast(){
-  const box=$("#lastBox");
-  if(!sel.grade||!sel.subject||editingId){ box.style.display="none"; return; }
-  const r = sorted(records).find(x=>x.grade===sel.grade&&x.subject===sel.subject);
+  const d=drafts[grade], box=$("#lastBox");
+  document.querySelectorAll("#gProgBox .gl").forEach(el=>el.innerHTML="");
+  if(!d.subject||editingId){ box.style.display="none"; return; }
+  const mine=sorted(records).filter(x=>x.grade===grade&&x.subject===d.subject);
+  if(grade===G3){
+    box.style.display="none";
+    document.querySelectorAll("#gProgBox .gl").forEach(el=>{
+      const g=el.dataset.gl, r=mine.find(x=>x.groupProgress&&x.groupProgress[g]);
+      el.innerHTML = r ? `上次（${shortDate(r.date)}）：<b>${esc(r.groupProgress[g])}</b>` : "";
+    });
+    return;
+  }
+  const r=mine[0];
   if(!r){ box.style.display="none"; return; }
   box.innerHTML = `上次進度（${fmtDate(r.date)}）：<br><b>${esc(r.progress)||"—"}</b>`;
   box.style.display="block";
 }
-$("#gradeChips").addEventListener("click",e=>{
-  const b=e.target.closest(".chip"); if(!b) return;
-  if(sel.grade!==b.dataset.v){ sel.grade=b.dataset.v; sel.subject=null;
-    if(SUBJECTS[sel.grade].length===1) sel.subject=SUBJECTS[sel.grade][0];
-    renderStudents(); }
-  renderGrades(); renderSubjects();
-});
 $("#subjChips").addEventListener("click",e=>{
   const b=e.target.closest(".chip"); if(!b) return;
-  sel.subject=b.dataset.v; renderSubjects();
+  captureDraft(); drafts[grade].subject=b.dataset.v; renderForm();
 });
+
+/* ---- 學生狀況（三年級） ---- */
 function renderStudents(prev){
   const wrap=$("#stuWrap"), box=$("#stuBox");
-  if(sel.grade!==ROSTER_GRADE){ wrap.style.display="none"; box.innerHTML=""; return; }
+  if(grade!==G3){ wrap.style.display="none"; box.innerHTML=""; return; }
   wrap.style.display="block";
   const marks={}; for(const x of (prev||[])) marks[x.id]=x;
-  // 修改舊記錄時，若名單已變更，仍保留舊記錄中的學生
   const list=[...roster]; for(const x of (prev||[])) if(!list.some(s=>s.id===x.id)) list.push({g:x.g,id:x.id,name:x.name});
   if(!list.length){ box.innerHTML='<div class="nostu">尚未匯入分組名單。請到下方「匯出／名單」頁匯入。</div>'; return; }
   box.innerHTML=groupsOf(list).map(({g,list})=>`<details class="grp" open data-g="${esc(g)}">
@@ -326,76 +384,88 @@ $("#stuBox").addEventListener("change",e=>{
   if(v==="其他") row.querySelector("input.other").focus();
   updateCounts();
 });
-function collectStudents(){
-  if(sel.grade!==ROSTER_GRADE) return {list:[]};
+function readStudents(loose){
   const list=[];
   for(const row of document.querySelectorAll("#stuBox .stu")){
     const v=row.querySelector("select").value; if(!v) continue;
     const it={g:row.dataset.g,id:row.dataset.id,name:row.dataset.name,s:v};
-    if(v==="其他"){ it.note=row.querySelector("input.other").value.trim(); if(!it.note) return {err:`請填寫 ${it.name} 的「其他」狀況`,row}; }
+    if(v==="其他"){ it.note=row.querySelector("input.other").value.trim(); if(!it.note&&!loose) return {err:`請填寫 ${it.name} 的「其他」狀況`,row}; }
     list.push(it);
   }
   return {list};
 }
-function stuText(arr,sep){ return (arr||[]).map(x=>`${x.g}組 ${x.name}：${x.s==="其他"?(x.note||"其他"):x.s}`).join(sep); }
-function resetForm(){
+
+/* ---- 儲存 / 修改 ---- */
+function cancelEdit(){
   editingId=null; document.body.classList.remove("editing");
-  $("#fDate").value=todayStr(); $("#fProg").value=""; $("#fPerf").value="";
   $("#saveBtn").textContent="💾 儲存記錄"; $("#cancelEdit").style.display="none";
-  renderGrades(); renderSubjects(); renderStudents();
+  drafts[grade]=blankDraft(grade); $("#fDate").value=todayStr();
 }
 $("#saveBtn").addEventListener("click",()=>{
-  const date=$("#fDate").value, progress=$("#fProg").value.trim(), perf=$("#fPerf").value.trim();
+  captureDraft();
+  const d=drafts[grade], date=$("#fDate").value;
   if(!date) return toast("請選擇日期");
-  if(!sel.grade) return toast("請選擇年級");
-  if(!sel.subject) return toast("請選擇科目");
-  if(!progress) { $("#fProg").focus(); return toast("請填寫進度"); }
-  const st=collectStudents();
-  if(st.err){ st.row.querySelector("input.other").focus(); return toast(st.err); }
-  const students=st.list;
+  if(!d.subject) return toast("請選擇科目");
+  const rec={date,grade,subject:d.subject};
+  if(grade===G3){
+    const gp={}; for(const k in d.gp){ const v=d.gp[k].trim(); if(v) gp[k]=v; }
+    if(!Object.keys(gp).length){ const t=$("#gProgBox textarea"); if(t) t.focus(); return toast("請至少填寫一組的進度"); }
+    const st=readStudents(false); if(st.err){ st.row.querySelector("input.other").focus(); return toast(st.err); }
+    const oldPerf=editingId?((records.find(x=>x.id===editingId)||{}).performance||""):"";
+    Object.assign(rec,{groupProgress:gp,progress:gpText(gp,"\n"),performance:oldPerf,students:st.list});
+  } else {
+    const progress=d.prog.trim(); if(!progress){ $("#fProg").focus(); return toast("請填寫進度"); }
+    Object.assign(rec,{progress,performance:d.perf.trim(),students:[]});
+  }
   if(editingId){
     const r=records.find(x=>x.id===editingId);
-    Object.assign(r,{date,grade:sel.grade,subject:sel.subject,progress,performance:perf,students,updated:Date.now()});
-    save(); toast("✅ 已更新"); resetForm(); go("pg-list"); return;
+    for(const k of ["groupProgress","performance","students"]) delete r[k];
+    Object.assign(r,rec,{updated:Date.now()});
+    save(); toast("✅ 已更新"); cancelEdit(); go("pg-list"); return;
   }
-  records.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),
-    date,grade:sel.grade,subject:sel.subject,progress,performance:perf,students,created:Date.now()});
+  records.push(Object.assign({id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),created:Date.now()},rec));
   save(); toast("✅ 已儲存");
-  $("#fProg").value=""; $("#fPerf").value=""; renderLast(); renderStudents(); window.scrollTo({top:0,behavior:"smooth"});
+  const keep=d.subject; drafts[grade]=blankDraft(grade); drafts[grade].subject=keep;
+  renderForm(); window.scrollTo({top:0,behavior:"smooth"});
 });
-$("#cancelEdit").addEventListener("click",()=>{ resetForm(); go("pg-list"); });
+$("#cancelEdit").addEventListener("click",()=>{ cancelEdit(); go("pg-list"); });
+function startEdit(r){
+  if(curPage==="pg-add"&&!editingId) captureDraft();
+  grade=r.grade; localStorage.setItem(GKEY,grade);
+  editingId=r.id;
+  drafts[grade]={subject:r.subject, prog:r.progress||"", perf:r.performance||"",
+    gp: r.groupProgress ? {...r.groupProgress} : (r.grade===G3&&r.progress ? {"（未分組）":r.progress} : {}),
+    students:r.students||[]};
+  $("#fDate").value=r.date;
+  document.body.classList.add("editing"); $("#saveBtn").textContent="💾 更新這筆記錄";
+  $("#cancelEdit").style.display="block"; go("pg-add");
+}
 
 /* ---- 歷史 ---- */
-function filterKeys(){
-  const keys=["全部"]; for(const g in SUBJECTS) for(const s of SUBJECTS[g]) keys.push(g+"｜"+s);
-  return keys;
-}
 function renderList(){
-  $("#filters").innerHTML = filterKeys().map(k=>`<button class="chip ${filter===k?'on':''}" data-v="${k}">${k.replace("年級","年").replace("｜"," ")}</button>`).join("");
-  const rows = sorted(records).filter(r=> filter==="全部" || (r.grade+"｜"+r.subject)===filter);
-  $("#countLbl").textContent = `共 ${rows.length} 筆`;
-  $("#list").innerHTML = rows.length ? rows.map(r=>`
-    <div class="rec" data-g="${GNUM[r.grade]||0}">
-      <div class="top"><span class="date">${fmtDate(r.date)}</span><span class="tag">${esc(r.grade)}・${esc(r.subject)}</span></div>
-      <div class="k">進度</div><div class="v">${esc(r.progress)}</div>
+  const f=subjFilter[grade]||"全部";
+  const keys=["全部",...SUBJECTS[grade]];
+  $("#filters").innerHTML = keys.length>2 ? keys.map(k=>`<button class="chip ${f===k?'on':''}" data-v="${k}">${k}</button>`).join("") : "";
+  const rows = sorted(records).filter(r=> r.grade===grade && (f==="全部"||r.subject===f));
+  $("#countLbl").textContent = `${grade}：共 ${rows.length} 筆`;
+  $("#list").innerHTML = rows.length ? rows.map(r=>{
+    const prog = r.groupProgress ? Object.keys(r.groupProgress).sort().map(k=>`<div class="v"><b>${esc(gName(k))}｜</b>${esc(r.groupProgress[k])}</div>`).join("") : `<div class="v">${esc(r.progress)}</div>`;
+    return `<div class="rec" data-g="${GNUM[r.grade]||0}">
+      <div class="top"><span class="date">${fmtDate(r.date)}</span><span class="tag">${esc(r.subject)}</span></div>
+      <div class="k">進度</div>${prog}
       ${r.performance?`<div class="k">課堂表現</div><div class="v">${esc(r.performance)}</div>`:""}
       ${r.students&&r.students.length?`<div class="k">學生狀況（${r.students.length} 人）</div><div class="v">${esc(stuText(r.students,"\n"))}</div>`:""}
       <div class="acts"><button data-act="edit" data-id="${r.id}">✏️ 修改</button><button class="del" data-act="del" data-id="${r.id}">🗑 刪除</button></div>
-    </div>`).join("") : `<div class="empty">還沒有記錄<br>到「記錄」頁新增第一筆吧</div>`;
+    </div>`; }).join("") : `<div class="empty">${grade}還沒有記錄<br>到「記錄」頁新增第一筆吧</div>`;
 }
-$("#filters").addEventListener("click",e=>{ const b=e.target.closest(".chip"); if(!b) return; filter=b.dataset.v; renderList(); });
+$("#filters").addEventListener("click",e=>{ const b=e.target.closest(".chip"); if(!b) return; subjFilter[grade]=b.dataset.v; renderList(); });
 $("#list").addEventListener("click",e=>{
   const b=e.target.closest("button[data-act]"); if(!b) return;
   const r=records.find(x=>x.id===b.dataset.id); if(!r) return;
   if(b.dataset.act==="del"){
     if(confirm(`確定刪除 ${fmtDate(r.date)} ${r.grade}${r.subject} 這筆記錄？`)){
       records=records.filter(x=>x.id!==r.id); save(); renderList(); toast("已刪除"); }
-  } else {
-    editingId=r.id; sel={grade:r.grade,subject:r.subject};
-    $("#fDate").value=r.date; $("#fProg").value=r.progress; $("#fPerf").value=r.performance||"";
-    document.body.classList.add("editing"); $("#saveBtn").textContent="💾 更新這筆記錄";
-    $("#cancelEdit").style.display="block"; renderGrades(); renderSubjects(); renderStudents(r.students); go("pg-add");
-  }
+  } else startEdit(r);
 });
 
 /* ---- 匯出 / 備份 ---- */
@@ -406,14 +476,24 @@ $("#exportXlsx").addEventListener("click",()=>{
   const wb=XLSX.utils.book_new();
   const all=[...records].sort((a,b)=>a.date.localeCompare(b.date)||a.created-b.created);
   const H=["日期","年級","科目","進度","課堂表現","學生狀況"];
-  const toRows = arr => arr.map(r=>({"日期":r.date,"年級":r.grade,"科目":r.subject,"進度":r.progress,"課堂表現":r.performance||"","學生狀況":stuText(r.students,"；")}));
-  const addSheet=(name,arr)=>{ const ws=XLSX.utils.json_to_sheet(toRows(arr),{header:H});
-    ws["!cols"]=[{wch:12},{wch:8},{wch:12},{wch:40},{wch:40},{wch:50}]; XLSX.utils.book_append_sheet(wb,ws,name); };
-  addSheet("全部",all);
-  for(const g in SUBJECTS) for(const s of SUBJECTS[g]){
-    const arr=all.filter(r=>r.grade===g&&r.subject===s); if(arr.length) addSheet((g.replace("年級","年")+s).slice(0,31),arr);
+  const ws0=XLSX.utils.json_to_sheet(all.map(r=>({"日期":r.date,"年級":r.grade,"科目":r.subject,"進度":r.groupProgress?gpText(r.groupProgress,"；"):r.progress,"課堂表現":r.performance||"","學生狀況":stuText(r.students,"；")})),{header:H});
+  ws0["!cols"]=[{wch:12},{wch:8},{wch:12},{wch:50},{wch:30},{wch:50}]; XLSX.utils.book_append_sheet(wb,ws0,"全部");
+  for(const g of GRADES) for(const s of SUBJECTS[g]){
+    const arr=all.filter(r=>r.grade===g&&r.subject===s); if(!arr.length) continue;
+    const name=(g.replace("年級","年")+s).slice(0,31);
+    if(g===G3){
+      const gs=new Set(g3Groups()); for(const r of arr) for(const k in (r.groupProgress||{})) gs.add(k);
+      const gl=[...gs].sort(), hasOld=arr.some(r=>!r.groupProgress&&r.progress), hasPerf=arr.some(r=>r.performance);
+      const hdr=["日期","科目",...gl.map(k=>`${gName(k)}進度`),...(hasOld?["進度（未分組）"]:[]),...(hasPerf?["課堂表現"]:[]),"學生狀況"];
+      const rows=arr.map(r=>{ const o={"日期":r.date,"科目":r.subject}; for(const k of gl) o[`${gName(k)}進度`]=(r.groupProgress||{})[k]||"";
+        if(hasOld) o["進度（未分組）"]=r.groupProgress?"":(r.progress||""); if(hasPerf) o["課堂表現"]=r.performance||""; o["學生狀況"]=stuText(r.students,"；"); return o; });
+      const ws=XLSX.utils.json_to_sheet(rows,{header:hdr});
+      ws["!cols"]=hdr.map(h=>({wch:h==="日期"?12:h==="科目"?10:h==="學生狀況"?50:32})); XLSX.utils.book_append_sheet(wb,ws,name);
+    } else {
+      const ws=XLSX.utils.json_to_sheet(arr.map(r=>({"日期":r.date,"科目":r.subject,"進度":r.progress,"課堂表現":r.performance||""})),{header:["日期","科目","進度","課堂表現"]});
+      ws["!cols"]=[{wch:12},{wch:12},{wch:45},{wch:45}]; XLSX.utils.book_append_sheet(wb,ws,name);
+    }
   }
-  // 學生狀況明細與統計
   const det=[]; const cnt={};
   for(const r of all) for(const x of (r.students||[])){
     det.push({"日期":r.date,"科目":r.subject,"組別":x.g,"班級座號":x.id,"姓名":x.name,"狀況":x.s,"說明":x.note||""});
@@ -442,7 +522,7 @@ async function shareOrDownload(blob,name,msg){
 }
 $("#backupBtn").addEventListener("click",async ()=>{
   if(!records.length) return toast("目前沒有資料");
-  const ok=await shareOrDownload(new Blob([JSON.stringify({app:"teaching-log",version:1,exported:new Date().toISOString(),records,roster},null,2)],{type:"application/json"}),`教學進度備份_${todayStr()}.json`,"⬇️ 已備份");
+  const ok=await shareOrDownload(new Blob([JSON.stringify({app:"teaching-log",version:2,exported:new Date().toISOString(),records,roster},null,2)],{type:"application/json"}),`教學進度備份_${todayStr()}.json`,"⬇️ 已備份");
   if(ok){ localStorage.setItem(KEY+".lastBackup",Date.now()); renderStats(); }
 });
 $("#restoreBtn").addEventListener("click",()=>$("#restoreFile").click());
@@ -454,7 +534,7 @@ $("#restoreFile").addEventListener("change",async e=>{
     const ids=new Set(records.map(r=>r.id)); let n=0;
     for(const r of inc){ if(r&&r.id&&r.date&&!ids.has(r.id)){ records.push(r); n++; } }
     let rmsg="";
-    if(Array.isArray(data.roster)&&data.roster.length){ roster=data.roster; saveRoster(); renderRoster(); renderStudents(); rmsg=`，名單 ${roster.length} 人`; }
+    if(Array.isArray(data.roster)&&data.roster.length){ roster=data.roster; saveRoster(); renderRoster(); rmsg=`，名單 ${roster.length} 人`; }
     save(); renderStats(); toast(`已還原 ${n} 筆${rmsg}（重複的略過）`);
   }catch(err){ toast("檔案格式不正確"); }
   e.target.value="";
@@ -467,9 +547,9 @@ $("#wipeBtn").addEventListener("click",()=>{
 });
 function renderStats(){
   const lines=[`總記錄：<b>${records.length}</b> 筆`];
-  for(const g in SUBJECTS) for(const s of SUBJECTS[g]){
+  for(const g of GRADES) for(const s of SUBJECTS[g]){
     const arr=records.filter(r=>r.grade===g&&r.subject===s);
-    if(arr.length){ const last=arr.reduce((a,b)=>a.date>b.date?a:b); lines.push(`${g}・${s}：${arr.length} 筆（最近 ${last.date.slice(5).replace("-","/")}）`); }
+    if(arr.length){ const last=arr.reduce((a,b)=>a.date>b.date?a:b); lines.push(`${g}・${s}：${arr.length} 筆（最近 ${shortDate(last.date)}）`); }
   }
   $("#stats").innerHTML=lines.join("<br>");
   const lb=+localStorage.getItem(KEY+".lastBackup")||0, days=Math.floor((Date.now()-lb)/864e5);
@@ -480,13 +560,15 @@ function renderStats(){
 
 /* ---- 導覽 ---- */
 function go(id){
+  curPage=id;
   document.querySelectorAll(".page").forEach(p=>p.classList.toggle("on",p.id===id));
   document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.pg===id));
-  if(id==="pg-list") renderList(); if(id==="pg-data") renderStats();
+  renderTabs();
+  if(id==="pg-add") renderForm(); if(id==="pg-list") renderList(); if(id==="pg-data") renderStats();
   window.scrollTo(0,0);
 }
-document.querySelector("nav").addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return;
-  if(editingId && b.dataset.pg!=="pg-add") resetForm();
+document.querySelector("nav").addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b||b.dataset.pg===curPage) return;
+  if(curPage==="pg-add"){ if(editingId) cancelEdit(); else captureDraft(); }
   go(b.dataset.pg); });
 
 let shownToday=todayStr();
@@ -498,7 +580,8 @@ function checkDay(){
 document.addEventListener("visibilitychange",()=>{ if(!document.hidden) checkDay(); });
 window.addEventListener("focus",checkDay);
 $("#todayLbl").textContent=fmtDate(shownToday);
-resetForm();
+$("#fDate").value=todayStr();
+renderTabs(); renderForm();
 /* ---- 分組名單管理 ---- */
 function renderRoster(){
   const gs=groupsOf(roster);
@@ -512,7 +595,7 @@ function applyRoster(text){
   if(!list.length) return toast("讀不到名單，請確認格式");
   const ids=new Set(); for(const s of list){ if(ids.has(s.id)) return toast(`座號 ${s.id} 重複`); ids.add(s.id); }
   if(roster.length && !confirm(`以新名單（${list.length} 人）取代目前名單（${roster.length} 人）？\n已存的記錄不受影響。`)) return;
-  roster=list; saveRoster(); renderRoster(); renderStudents(); toast(`✅ 已匯入 ${list.length} 位學生`);
+  if(curPage==="pg-add") captureDraft(); roster=list; saveRoster(); renderRoster(); toast(`✅ 已匯入 ${list.length} 位學生`);
   $("#rosterText").style.display="none"; $("#rosterPasteRow").style.display="none"; $("#rosterText").value="";
 }
 $("#rosterFileBtn").addEventListener("click",()=>$("#rosterFile").click());
@@ -528,7 +611,7 @@ $("#rosterPasteBtn").addEventListener("click",()=>{
 });
 $("#rosterPasteOk").addEventListener("click",()=>applyRoster($("#rosterText").value));
 $("#rosterClear").addEventListener("click",()=>{
-  if(confirm("確定清除分組名單？已存的記錄不受影響。")){ roster=[]; saveRoster(); renderRoster(); renderStudents(); toast("已清除名單"); }
+  if(confirm("確定清除分組名單？已存的記錄不受影響。")){ roster=[]; saveRoster(); renderRoster(); toast("已清除名單"); }
 });
 renderRoster();
 
