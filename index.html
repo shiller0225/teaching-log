@@ -242,7 +242,7 @@ textarea.roster{min-height:160px;font-size:18px;margin-top:12px;display:none}
       <div id="stats" class="v" style="font-size:20px"></div>
     </div>
     <button class="btn danger" id="wipeBtn">🗑 清除全部資料</button>
-    <div class="hint" style="text-align:center;margin-top:18px">教學進度記錄表 v1.9</div>
+    <div class="hint" style="text-align:center;margin-top:18px">教學進度記錄表 v1.10</div>
   </section>
 </div>
 
@@ -257,14 +257,14 @@ textarea.roster{min-height:160px;font-size:18px;margin-top:12px;display:none}
 <script>
 const SUBJECTS = {
   "一年級": ["自然探究","自然閱讀"],
-  "二年級": ["雄科特訓班"],
+  "二年級": ["雄科特訓班","獨立研究"],
   "三年級": ["理化","地球科學"]
 };
 const GRADES = Object.keys(SUBJECTS);
 const GNUM = {"一年級":1,"二年級":2,"三年級":3};
 const KEY = "teachingLog.v1";
 const G3 = "三年級";
-const PAGED = {"一年級":true};
+const PAGED = {"一年級":true,"二年級":true};
 const NOPERF = {"一年級":true};      // 課堂表現只用學生名單點選、不顯示手寫欄的年級        // 科目分成獨立子頁的年級
 const DEFAULT_GROUPS = ["B","E","F"];
 const STATUSES = ["精神不佳","教材未帶","上課分心","身體不適","作業未完成","上課遲到","其他"];
@@ -276,7 +276,7 @@ let records = load();
 // 舊名稱轉換：自然實驗 → 自然探究
 if(records.some(r=>r.grade==="一年級"&&r.subject==="自然實驗")){ records.forEach(r=>{ if(r.grade==="一年級"&&r.subject==="自然實驗") r.subject="自然探究"; }); save(); }
 /* 各班別名單：三年級共用一份；其他年級依科目各一份 */
-const UNITS = [["三年級","三年級（理化／地科）"],["一年級|自然探究","一年級 自然探究"],["一年級|自然閱讀","一年級 自然閱讀"],["二年級|雄科特訓班","二年級 雄科特訓班"]];
+const UNITS = [["三年級","三年級（理化／地科）"],["一年級|自然探究","一年級 自然探究"],["一年級|自然閱讀","一年級 自然閱讀"],["二年級|雄科特訓班","二年級 雄科特訓班"],["二年級|獨立研究","二年級 獨立研究"]];
 let rosters = (()=>{ let o={}; try{ o=JSON.parse(localStorage.getItem(RSKEY))||{}; }catch(e){}
   if(!o["三年級"]){ try{ const old=JSON.parse(localStorage.getItem(RKEY)); if(Array.isArray(old)&&old.length) o["三年級"]=old; }catch(e){} }
   return o; })();
