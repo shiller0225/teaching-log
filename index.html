@@ -242,7 +242,7 @@ textarea.roster{min-height:160px;font-size:18px;margin-top:12px;display:none}
       <div id="stats" class="v" style="font-size:20px"></div>
     </div>
     <button class="btn danger" id="wipeBtn">🗑 清除全部資料</button>
-    <div class="hint" style="text-align:center;margin-top:18px">教學進度記錄表 v1.10</div>
+    <div class="hint" style="text-align:center;margin-top:18px">教學進度記錄表 v1.11</div>
   </section>
 </div>
 
@@ -258,7 +258,7 @@ textarea.roster{min-height:160px;font-size:18px;margin-top:12px;display:none}
 const SUBJECTS = {
   "一年級": ["自然探究","自然閱讀"],
   "二年級": ["雄科特訓班","獨立研究"],
-  "三年級": ["理化","地球科學"]
+  "三年級": ["自然"]
 };
 const GRADES = Object.keys(SUBJECTS);
 const GNUM = {"一年級":1,"二年級":2,"三年級":3};
@@ -274,9 +274,12 @@ const $ = s => document.querySelector(s);
 
 let records = load();
 // 舊名稱轉換：自然實驗 → 自然探究
+// 三年級：理化、地球科學合併為「自然」（保留原科目名稱）
+if(records.some(r=>r.grade==="三年級"&&(r.subject==="理化"||r.subject==="地球科學"))){ records.forEach(r=>{ if(r.grade==="三年級"&&(r.subject==="理化"||r.subject==="地球科學")){ r.origSubject=r.subject; r.subject="自然"; } }); save(); }
+function subjLabel(r){ return r.origSubject ? `${r.subject}（原${r.origSubject}）` : r.subject; }
 if(records.some(r=>r.grade==="一年級"&&r.subject==="自然實驗")){ records.forEach(r=>{ if(r.grade==="一年級"&&r.subject==="自然實驗") r.subject="自然探究"; }); save(); }
 /* 各班別名單：三年級共用一份；其他年級依科目各一份 */
-const UNITS = [["三年級","三年級（理化／地科）"],["一年級|自然探究","一年級 自然探究"],["一年級|自然閱讀","一年級 自然閱讀"],["二年級|雄科特訓班","二年級 雄科特訓班"],["二年級|獨立研究","二年級 獨立研究"]];
+const UNITS = [["三年級","三年級 自然"],["一年級|自然探究","一年級 自然探究"],["一年級|自然閱讀","一年級 自然閱讀"],["二年級|雄科特訓班","二年級 雄科特訓班"],["二年級|獨立研究","二年級 獨立研究"]];
 let rosters = (()=>{ let o={}; try{ o=JSON.parse(localStorage.getItem(RSKEY))||{}; }catch(e){}
   if(!o["三年級"]){ try{ const old=JSON.parse(localStorage.getItem(RKEY)); if(Array.isArray(old)&&old.length) o["三年級"]=old; }catch(e){} }
   return o; })();
@@ -574,7 +577,7 @@ function renderList(){
       body = `<div class="k">進度</div><div class="v">${esc(r.progress)}</div>` + (r.performance?`<div class="k">課堂表現</div><div class="v">${esc(r.performance)}</div>`:"");
     }
     return `<div class="rec" data-g="${GNUM[r.grade]||0}">
-      <div class="top"><span class="date">${fmtDate(r.date)}</span><span class="tag">${esc(r.subject)}</span></div>
+      <div class="top"><span class="date">${fmtDate(r.date)}</span><span class="tag">${esc(subjLabel(r))}</span></div>
       ${body}
       ${r.students&&r.students.length?`<div class="k">學生狀況（${r.students.length} 人）</div><div class="v">${esc(stuText(r.students,"\n"))}</div>`:""}
       <div class="acts"><button data-act="edit" data-id="${r.id}">✏️ 修改</button><button class="del" data-act="del" data-id="${r.id}">🗑 刪除</button></div>
@@ -598,7 +601,7 @@ $("#exportXlsx").addEventListener("click",()=>{
   const wb=XLSX.utils.book_new();
   const all=[...records].sort((a,b)=>a.date.localeCompare(b.date)||a.created-b.created);
   const H=["日期","年級","科目","進度","課堂表現","學生狀況"];
-  const ws0=XLSX.utils.json_to_sheet(all.map(r=>({"日期":r.date,"年級":r.grade,"科目":r.subject,"進度":r.groupProgress?gpText(r.groupProgress,"；",gcfg(r.grade,r.subject)):r.progress,"課堂表現":r.groupPerf?gpText(r.groupPerf,"；",gcfg(r.grade,r.subject)):(r.performance||""),"學生狀況":stuText(r.students,"；")})),{header:H});
+  const ws0=XLSX.utils.json_to_sheet(all.map(r=>({"日期":r.date,"年級":r.grade,"科目":subjLabel(r),"進度":r.groupProgress?gpText(r.groupProgress,"；",gcfg(r.grade,r.subject)):r.progress,"課堂表現":r.groupPerf?gpText(r.groupPerf,"；",gcfg(r.grade,r.subject)):(r.performance||""),"學生狀況":stuText(r.students,"；")})),{header:H});
   ws0["!cols"]=[{wch:12},{wch:8},{wch:12},{wch:50},{wch:30},{wch:50}]; XLSX.utils.book_append_sheet(wb,ws0,"全部");
   for(const g of GRADES) for(const s of SUBJECTS[g]){
     const arr=all.filter(r=>r.grade===g&&r.subject===s); if(!arr.length) continue;
@@ -614,14 +617,14 @@ $("#exportXlsx").addEventListener("click",()=>{
       if(hasPerf) cols.push(["課堂表現",r=>r.performance||""]);
       if(hasStu||arr.some(r=>r.students&&r.students.length)) cols.push(["學生狀況",r=>stuText(r.students,"；")]);
       const hdr=["日期","科目",...cols.map(c=>c[0])];
-      const rows=arr.map(r=>{ const o={"日期":r.date,"科目":r.subject}; for(const [h,f] of cols) o[h]=f(r); return o; });
+      const rows=arr.map(r=>{ const o={"日期":r.date,"科目":subjLabel(r)}; for(const [h,f] of cols) o[h]=f(r); return o; });
       const ws=XLSX.utils.json_to_sheet(rows,{header:hdr});
       ws["!cols"]=hdr.map(h=>({wch:h==="日期"?12:h==="科目"?10:h==="學生狀況"?50:30})); XLSX.utils.book_append_sheet(wb,ws,name);
     } else {
       const hs=arr.some(r=>r.students&&r.students.length);
       const hp=arr.some(r=>r.performance);
       const hdr=["日期","科目","進度",...(hp?["課堂表現"]:[]),...(hs?["學生狀況"]:[])];
-      const ws=XLSX.utils.json_to_sheet(arr.map(r=>{ const o={"日期":r.date,"科目":r.subject,"進度":r.progress}; if(hp) o["課堂表現"]=r.performance||""; if(hs) o["學生狀況"]=stuText(r.students,"；"); return o; }),{header:hdr});
+      const ws=XLSX.utils.json_to_sheet(arr.map(r=>{ const o={"日期":r.date,"科目":subjLabel(r),"進度":r.progress}; if(hp) o["課堂表現"]=r.performance||""; if(hs) o["學生狀況"]=stuText(r.students,"；"); return o; }),{header:hdr});
       ws["!cols"]=[{wch:12},{wch:12},{wch:45},{wch:45},{wch:50}]; XLSX.utils.book_append_sheet(wb,ws,name);
     }
   }
@@ -629,7 +632,7 @@ $("#exportXlsx").addEventListener("click",()=>{
   const uLabel=u=>(UNITS.find(x=>x[0]===u)||[u,u.replace("|"," ")])[1];
   for(const r of all) for(const x of (r.students||[])){
     const u=unitOf(r.grade,r.subject), ss=sArr(x);
-    det.push({"日期":r.date,"年級":r.grade,"科目":r.subject,"組別":x.g||"","班級座號":x.cls||x.id,"姓名":x.name,"狀況":ss.join("、"),"遲到分鐘":x.late||"","其他說明":x.note||""});
+    det.push({"日期":r.date,"年級":r.grade,"科目":subjLabel(r),"組別":x.g||"","班級座號":x.cls||x.id,"姓名":x.name,"狀況":ss.join("、"),"遲到分鐘":x.late||"","其他說明":x.note||""});
     const key=u+"#"+x.id, c=cnt[key]||(cnt[key]={u,g:x.g||"",id:x.id,cls:x.cls,name:x.name,n:{},late:0,tot:0});
     for(const t of ss) c.n[t]=(c.n[t]||0)+1; c.late+=x.late||0; c.tot++;
   }
@@ -675,7 +678,9 @@ $("#restoreFile").addEventListener("change",async e=>{
     let rmsg="";
     if(data.rosters&&typeof data.rosters==="object"){ for(const u in data.rosters) if(Array.isArray(data.rosters[u])&&data.rosters[u].length) rosters[u]=data.rosters[u]; saveRosters(); renderRoster(); rmsg="，含名單"; }
     else if(Array.isArray(data.roster)&&data.roster.length){ rosters["三年級"]=data.roster; saveRosters(); renderRoster(); rmsg="，含名單"; }
-    for(const r of records) for(const x of (r.students||[])) if(!Array.isArray(x.s)) x.s=x.s?[x.s]:[];
+    for(const r of records){ for(const x of (r.students||[])) if(!Array.isArray(x.s)) x.s=x.s?[x.s]:[];
+      if(r.grade==="三年級"&&(r.subject==="理化"||r.subject==="地球科學")){ r.origSubject=r.subject; r.subject="自然"; }
+      if(r.grade==="一年級"&&r.subject==="自然實驗") r.subject="自然探究"; }
     save(); renderStats(); toast(`已還原 ${n} 筆${rmsg}（重複的略過）`);
   }catch(err){ toast("檔案格式不正確"); }
   e.target.value="";
